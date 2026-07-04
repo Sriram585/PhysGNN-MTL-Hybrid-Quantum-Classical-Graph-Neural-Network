@@ -1,9 +1,11 @@
 import os
 import argparse
+# pyrefly: ignore [missing-import]
 import pytorch_lightning as pl
+# pyrefly: ignore [missing-import]
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
 
-from src.data.dataset import generate_dummy_data, get_dataloader
+from src.data.dataset import generate_dummy_data, get_dataloader, fetch_materials_project_data
 from src.models.physgnn import PhysGNN_MTL
 from src.utils.evaluation import evaluate_and_plot
 
@@ -11,7 +13,7 @@ def main():
     parser = argparse.ArgumentParser(description="PhysGNN-MTL Training Pipeline")
     parser.add_argument('--epochs', type=int, default=50, help="Number of training epochs")
     parser.add_argument('--batch_size', type=int, default=16, help="Batch size")
-    parser.add_argument('--num_samples', type=int, default=300, help="Number of synthetic samples to generate")
+    parser.add_argument('--num_samples', type=int, default=50000, help='Number of Materials Project samples to fetch/train on')
     parser.add_argument('--api_key', type=str, default=None, help="Materials Project API Key (or set MP_API_KEY in .env)")
     args = parser.parse_args()
     
@@ -30,12 +32,15 @@ def main():
     
     if api_key:
         print(f"Connecting to Materials Project using API Key: {api_key[:4]}...")
-        # dataset = fetch_materials_project_data(api_key, args.num_samples)
-        print("Note: Materials Project fetching is currently a stub. Falling back to dummy data.")
-        dataset = generate_dummy_data(args.num_samples)
+        dataset = fetch_materials_project_data(api_key, args.num_samples)
     else:
         print(f"Generating {args.num_samples} synthetic Materials Project data points...")
         dataset = generate_dummy_data(args.num_samples) 
+        
+    # --- Class Imbalance Check ---
+    metals = sum(1 for data in dataset if data.y[0, 0].item() == 0.0)
+    non_metals = len(dataset) - metals
+    print(f"\n[DATASET STATS] Total: {len(dataset)} | Metals (Band Gap=0): {metals} ({metals/len(dataset)*100:.1f}%) | Non-Metals: {non_metals} ({non_metals/len(dataset)*100:.1f}%)\n")
     
     # Simple split
     num_train = int(0.7 * args.num_samples)
