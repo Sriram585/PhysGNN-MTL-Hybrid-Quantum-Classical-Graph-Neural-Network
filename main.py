@@ -96,7 +96,7 @@ def main():
     print("Loading best model for testing and plotting...")
     best_model_path = checkpoint_callback.best_model_path
     if best_model_path:
-        model = PhysGNN_MTL.load_from_checkpoint(best_model_path)
+        model = PhysGNN_MTL.load_from_checkpoint(best_model_path, scaler=scaler)
     
     evaluate_and_plot(model, test_loader)
     print("All tasks completed successfully!")

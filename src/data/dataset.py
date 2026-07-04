@@ -52,10 +52,14 @@ def fetch_materials_project_data(api_key, num_samples=100, cutoff=4.0):
     if os.path.exists(cache_path):
         print(f"Loading {num_samples} cached materials from {cache_path}...")
         data_list = torch.load(cache_path, weights_only=False)
-        # Fix NaNs in cached data (from noble gases)
+        # Fix NaNs and clip database outliers in cached data
         for data in data_list:
             data.x = torch.nan_to_num(data.x, nan=0.0)
             data.y = torch.nan_to_num(data.y, nan=0.0)
+            # Clamp targets to reasonable physical bounds
+            data.y[0, 0] = torch.clamp(data.y[0, 0], min=0.0, max=15.0)      # Band Gap
+            data.y[0, 1] = torch.clamp(data.y[0, 1], min=-10.0, max=10.0)    # Formation Energy
+            data.y[0, 2] = torch.clamp(data.y[0, 2], min=0.0, max=1000.0)    # Bulk Modulus
         return data_list
         
     print(f"Querying Materials Project for up to {num_samples} materials...")
@@ -103,6 +107,9 @@ def fetch_materials_project_data(api_key, num_samples=100, cutoff=4.0):
             
         y = torch.tensor([[band_gap, form_energy, bulk_mod]], dtype=torch.float)
         y = torch.nan_to_num(y, nan=0.0)
+        y[0, 0] = torch.clamp(y[0, 0], min=0.0, max=15.0)
+        y[0, 1] = torch.clamp(y[0, 1], min=-10.0, max=10.0)
+        y[0, 2] = torch.clamp(y[0, 2], min=0.0, max=1000.0)
         
         # Nodes
         node_features = []
