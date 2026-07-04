@@ -8,6 +8,7 @@ from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
 from src.data.dataset import generate_dummy_data, get_dataloader, fetch_materials_project_data
 from src.models.physgnn import PhysGNN_MTL
 from src.utils.evaluation import evaluate_and_plot
+from src.utils.scaler import TargetScaler
 
 def main():
     parser = argparse.ArgumentParser(description="PhysGNN-MTL Training Pipeline")
@@ -43,20 +44,24 @@ def main():
     print(f"\n[DATASET STATS] Total: {len(dataset)} | Metals (Band Gap=0): {metals} ({metals/len(dataset)*100:.1f}%) | Non-Metals: {non_metals} ({non_metals/len(dataset)*100:.1f}%)\n")
     
     # Simple split
-    num_train = int(0.7 * args.num_samples)
-    num_val = int(0.15 * args.num_samples)
+    num_train = int(0.7 * len(dataset))
+    num_val = int(0.15 * len(dataset))
     
-    train_data = dataset[:num_train]
-    val_data = dataset[num_train:num_train+num_val]
-    test_data = dataset[num_train+num_val:]
+    train_dataset = dataset[:num_train]
+    val_dataset = dataset[num_train:num_train+num_val]
+    test_dataset = dataset[num_train+num_val:]
     
-    train_loader = get_dataloader(train_data, batch_size=args.batch_size, is_train=True)
-    val_loader = get_dataloader(val_data, batch_size=args.batch_size, is_train=False)
-    test_loader = get_dataloader(test_data, batch_size=args.batch_size, is_train=False)
+    train_loader = get_dataloader(train_dataset, batch_size=args.batch_size, is_train=True)
+    val_loader = get_dataloader(val_dataset, batch_size=args.batch_size, is_train=False)
+    test_loader = get_dataloader(test_dataset, batch_size=args.batch_size, is_train=False)
+    
+    # Fit scaler to training dataset
+    scaler = TargetScaler()
+    scaler.fit(train_loader)
     
     # Initialize model
     print("Initializing PhysGNN-MTL model...")
-    model = PhysGNN_MTL(node_dim=10, edge_dim=3)
+    model = PhysGNN_MTL(node_dim=10, edge_dim=3, n_qubits=12, scaler=scaler)
     
     os.makedirs('checkpoints', exist_ok=True)
     

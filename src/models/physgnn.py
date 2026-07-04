@@ -16,10 +16,11 @@ def quantum_circuit(inputs, weights):
     return [qml.expval(qml.PauliZ(i)) for i in range(3)]
 
 class PhysGNN_MTL(pl.LightningModule):
-    def __init__(self, node_dim, edge_dim, n_qubits=12, q_depth=2, lr=1e-3):
+    def __init__(self, node_dim, edge_dim, n_qubits=12, q_depth=2, lr=1e-3, scaler=None):
         super().__init__()
-        self.save_hyperparameters()
+        self.save_hyperparameters(ignore=['scaler'])
         self.lr = lr
+        self.scaler = scaler
         
         # --- Classical Graph Module ---
         self.conv1 = TransformerConv(node_dim, 32, edge_dim=edge_dim)
@@ -60,8 +61,6 @@ class PhysGNN_MTL(pl.LightningModule):
         
         # Regression Heads
         bg = self.head_band_gap(q_out)
-        bg = F.relu(bg) # Enforce physical constraint: band gap >= 0
-        
         fe = self.head_form_energy(q_out)
         bm = self.head_bulk_mod(q_out)
         
@@ -75,15 +74,14 @@ class PhysGNN_MTL(pl.LightningModule):
         mse_fe = F.mse_loss(fe_pred, fe_true)
         mse_bm = F.mse_loss(bm_pred, bm_true)
         
-        # Physics penalty
-        physics_penalty = torch.mean(torch.clamp(-bg_pred, min=0.0))
-        
-        total_loss = mse_bg + mse_fe + mse_bm + 10.0 * physics_penalty
-        return total_loss
+        return mse_bg + mse_fe + mse_bm
 
     def training_step(self, batch, batch_idx):
         preds = self(batch)
-        loss = self.custom_loss(preds, batch.y)
+        targets = batch.y
+        if self.scaler is not None:
+            targets = self.scaler.transform(targets)
+        loss = self.custom_loss(preds, targets)
         self.log('train_loss', loss, batch_size=batch.num_graphs)
         self.train_step_outputs.append(loss)
         return loss
@@ -98,7 +96,10 @@ class PhysGNN_MTL(pl.LightningModule):
 
     def validation_step(self, batch, batch_idx):
         preds = self(batch)
-        loss = self.custom_loss(preds, batch.y)
+        targets = batch.y
+        if self.scaler is not None:
+            targets = self.scaler.transform(targets)
+        loss = self.custom_loss(preds, targets)
         self.log('val_loss', loss, batch_size=batch.num_graphs, prog_bar=True)
         self.val_step_outputs.append(loss)
         return loss

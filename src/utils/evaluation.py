@@ -14,6 +14,8 @@ def evaluate_and_plot(model, dataloader, output_dir='outputs'):
     with torch.no_grad():
         for batch in dataloader:
             preds = model(batch)
+            if hasattr(model, 'scaler') and model.scaler is not None:
+                preds = model.scaler.inverse_transform(preds)
             all_preds.append(preds.cpu().numpy())
             all_trues.append(batch.y.cpu().numpy())
             
