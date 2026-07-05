@@ -9,7 +9,7 @@
 
 By combining the spatial message-passing capabilities of classical Graph Neural Networks (GNNs) with the high-dimensional feature extraction capabilities of Variational Quantum Circuits (VQCs), this model acts as a powerful tool for materials discovery.
 
-## 🌟 Key Features
+## Key Features
 
 * **Hybrid Architecture**: Leverages PyTorch Geometric for classical crystal structure message passing and PennyLane for parameterized quantum circuits.
 * **Residual Quantum Bypass**: Introduces a crucial residual concatenation step that combines classical GNN pooled features with the quantum circuit's output. This elegantly solves the vanishing gradient/barren plateau problem common in quantum machine learning!
@@ -17,7 +17,7 @@ By combining the spatial message-passing capabilities of classical Graph Neural 
 * **Automated Data Fetching**: Seamlessly integrates with the [Materials Project API](https://next-gen.materialsproject.org/api) (`mp-api`) to dynamically query, fetch, and construct PyG crystal graphs on the fly.
 * **Class Imbalance Handling**: Automatically utilizes a `WeightedRandomSampler` to handle data skews (e.g., heavy bias towards metallic zero band-gap materials).
 
-## 🧠 Model Architecture
+## Model Architecture
 
 1. **Classical GNN**: A 3-layer `TransformerConv` network with `BatchNorm` extracts structural representations from node features (atomic numbers, electronegativity, radii) and edge features (interatomic displacement vectors).
 2. **Quantum Projection**: The pooled classical graph features are projected into a 4-dimensional latent space and encoded into 4 qubits via `AngleEmbedding`.
@@ -38,7 +38,7 @@ pip install pennylane pennylane-lightning[gpu]
 pip install mp-api matplotlib scikit-learn python-dotenv
 ```
 
-## 🚀 Usage
+## Usage
 
 ### 1. API Key Setup
 To fetch real materials data, you need an API key from the Materials Project. Create a `.env` file in the root directory:
@@ -60,7 +60,7 @@ python main.py
 For an interactive, step-by-step exploration of the pipeline, you can run the provided Jupyter notebook:
 - `Phys-GNN-Quantum.ipynb`: Contains the complete data, model, and training loop in a single GPU-accelerated notebook environment.
 
-## 📁 Project Structure
+## Project Structure
 
 ```text
 ├── main.py                     # Entry point for the PyTorch Lightning training pipeline
@@ -78,7 +78,7 @@ For an interactive, step-by-step exploration of the pipeline, you can run the pr
         └── scaler.py           # TargetScaler for standardizing physical property distributions
 ```
 
-## 📊 Outputs
+## Outputs
 
 Upon completion of the evaluation phase, the script evaluates the best model checkpoint on the test set and generates high-quality plots in the `outputs/` directory:
 
