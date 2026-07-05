@@ -24,12 +24,12 @@ By combining the spatial message-passing capabilities of classical Graph Neural 
 3. **Variational Quantum Circuit**: A `StronglyEntanglingLayers` circuit processes the embedded state to extract complex quantum correlations.
 4. **Residual Fusion & MLP Heads**: The outputs of the quantum circuit are concatenated *with* the classical graph features. Two independent Multi-Layer Perceptrons (MLPs) then predict the target physical properties.
 
-## 🛠 Installation
+## Installation
 
 Clone the repository and install the required dependencies:
 
 ```bash
-git clone <your-repo-url>
+git clone https://github.com/Sriram585/PhysGNN-MTL-Hybrid-Quantum-Classical-Graph-Neural-Network.git
 cd PhysGNN-MTL-Hybrid-Quantum-Classical-Graph-Neural-Network
 
 # It is recommended to use a virtual environment
@@ -84,6 +84,3 @@ Upon completion of the evaluation phase, the script evaluates the best model che
 
 1. **`parity_plots.png`**: Visualizes `True` vs `Predicted` values for the target properties, displaying $R^2$ and MAE metrics.
 2. **`training_curves.png`**: Displays the historical loss curves across training and validation epochs.
-
-## 🤝 Contributing
-Contributions, issues, and feature requests are welcome! Feel free to check the issues page.
