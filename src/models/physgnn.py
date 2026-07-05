@@ -6,35 +6,57 @@ import pytorch_lightning as pl
 import pennylane as qml
 
 # Configure the PennyLane Quantum Device
-n_qubits = 12
+n_qubits = 4
 dev = qml.device("default.qubit", wires=n_qubits)
 
 @qml.qnode(dev, interface="torch")
 def quantum_circuit(inputs, weights):
     qml.AngleEmbedding(inputs, wires=range(n_qubits))
     qml.StronglyEntanglingLayers(weights, wires=range(n_qubits))
-    return [qml.expval(qml.PauliZ(i)) for i in range(3)]
+    return [qml.expval(qml.PauliZ(i)) for i in range(n_qubits)]
 
 class PhysGNN_MTL(pl.LightningModule):
-    def __init__(self, node_dim, edge_dim, n_qubits=12, q_depth=2, lr=1e-3, scaler=None):
+    def __init__(self, node_dim, edge_dim, n_qubits=4, q_depth=2, lr=5e-3, scaler=None):
         super().__init__()
         self.save_hyperparameters(ignore=['scaler'])
         self.lr = lr
         self.scaler = scaler
         
         # --- Classical Graph Module ---
-        self.conv1 = TransformerConv(node_dim, 32, edge_dim=edge_dim)
-        self.conv2 = TransformerConv(32, 64, edge_dim=edge_dim)
-        self.fc_classical = nn.Linear(64, n_qubits)
+        self.conv1 = TransformerConv(node_dim, 64, edge_dim=edge_dim)
+        self.bn1 = nn.BatchNorm1d(64)
+        self.conv2 = TransformerConv(64, 128, edge_dim=edge_dim)
+        self.bn2 = nn.BatchNorm1d(128)
+        self.conv3 = TransformerConv(128, 128, edge_dim=edge_dim)
+        self.bn3 = nn.BatchNorm1d(128)
+        
+        # --- Projection to quantum input ---
+        self.fc_to_quantum = nn.Linear(128, n_qubits)
         
         # --- Quantum Circuit Module ---
         weight_shapes = {"weights": (q_depth, n_qubits, 3)}
         self.qlayer = qml.qnn.TorchLayer(quantum_circuit, weight_shapes)
         
-        # --- Multi-Task Regression Heads ---
-        self.head_band_gap = nn.Linear(3, 1)
-        self.head_form_energy = nn.Linear(3, 1)
-        self.head_bulk_mod = nn.Linear(3, 1)
+        # --- Multi-Task Heads ---
+        # Takes BOTH classical pooled features (128) AND quantum features (n_qubits)
+        combined_dim = 128 + n_qubits
+        
+        self.head_band_gap = nn.Sequential(
+            nn.Linear(combined_dim, 64),
+            nn.ReLU(),
+            nn.Dropout(0.2),
+            nn.Linear(64, 32),
+            nn.ReLU(),
+            nn.Linear(32, 1)
+        )
+        self.head_form_energy = nn.Sequential(
+            nn.Linear(combined_dim, 64),
+            nn.ReLU(),
+            nn.Dropout(0.2),
+            nn.Linear(64, 32),
+            nn.ReLU(),
+            nn.Linear(32, 1)
+        )
         
         # Tracking losses for analytical plotting
         self.train_epoch_losses = []
@@ -43,42 +65,40 @@ class PhysGNN_MTL(pl.LightningModule):
     def forward(self, data):
         x, edge_index, edge_attr, batch = data.x, data.edge_index, data.edge_attr, data.batch
         
-        # Classical Graph Feature Extraction
-        x = F.relu(self.conv1(x, edge_index, edge_attr))
-        x = F.relu(self.conv2(x, edge_index, edge_attr))
+        # Classical GNN
+        x = F.relu(self.bn1(self.conv1(x, edge_index, edge_attr)))
+        x = F.relu(self.bn2(self.conv2(x, edge_index, edge_attr)))
+        x = F.relu(self.bn3(self.conv3(x, edge_index, edge_attr)))
         
-        # Global Pooling
+        # Global Pooling → 128-dim classical features
         x_pool = global_mean_pool(x, batch)
         
-        # Linear projection exactly to 12 dimensions
-        x_proj = self.fc_classical(x_pool)
-        
-        # Scale to [0, pi] for quantum embedding
+        # Quantum branch
+        x_proj = self.fc_to_quantum(x_pool)
         x_q_in = torch.sigmoid(x_proj) * torch.pi
+        q_out = self.qlayer(x_q_in)
         
-        # Quantum Circuit mapping to 3 expectation values
-        q_out = self.qlayer(x_q_in) 
+        # RESIDUAL: Concatenate classical features WITH quantum features
+        combined = torch.cat([x_pool, q_out], dim=1)
         
         # Regression Heads
-        bg = self.head_band_gap(q_out)
-        fe = self.head_form_energy(q_out)
-        bm = self.head_bulk_mod(q_out)
+        bg = self.head_band_gap(combined)
+        fe = self.head_form_energy(combined)
         
-        return torch.cat([bg, fe, bm], dim=1) 
+        return torch.cat([bg, fe], dim=1)
 
     def custom_loss(self, preds, targets):
-        bg_pred, fe_pred, bm_pred = preds[:, 0], preds[:, 1], preds[:, 2]
-        bg_true, fe_true, bm_true = targets[:, 0], targets[:, 1], targets[:, 2]
+        bg_pred, fe_pred = preds[:, 0], preds[:, 1]
+        bg_true, fe_true = targets[:, 0], targets[:, 1]
         
-        mse_bg = F.mse_loss(bg_pred, bg_true)
-        mse_fe = F.mse_loss(fe_pred, fe_true)
-        mse_bm = F.mse_loss(bm_pred, bm_true)
+        loss_bg = F.huber_loss(bg_pred, bg_true, delta=1.0)
+        loss_fe = F.huber_loss(fe_pred, fe_true, delta=1.0)
         
-        return mse_bg + mse_fe + mse_bm
+        return loss_bg + loss_fe
 
     def training_step(self, batch, batch_idx):
         preds = self(batch)
-        targets = batch.y
+        targets = batch.y[:, :2]
         if self.scaler is not None:
             targets = self.scaler.transform(targets)
         loss = self.custom_loss(preds, targets)
@@ -96,7 +116,7 @@ class PhysGNN_MTL(pl.LightningModule):
 
     def validation_step(self, batch, batch_idx):
         preds = self(batch)
-        targets = batch.y
+        targets = batch.y[:, :2]
         if self.scaler is not None:
             targets = self.scaler.transform(targets)
         loss = self.custom_loss(preds, targets)
@@ -113,4 +133,6 @@ class PhysGNN_MTL(pl.LightningModule):
             self.val_epoch_losses.append(avg_loss.item())
             
     def configure_optimizers(self):
-        return torch.optim.Adam(self.parameters(), lr=self.lr)
+        optimizer = torch.optim.Adam(self.parameters(), lr=self.lr)
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=10)
+        return {"optimizer": optimizer, "lr_scheduler": {"scheduler": scheduler, "monitor": "val_loss"}}

@@ -1,8 +1,6 @@
 import torch
 import numpy as np
-# pyrefly: ignore [missing-import]
 from torch_geometric.data import Data
-# pyrefly: ignore [missing-import]
 from torch_geometric.loader import DataLoader as PyGDataLoader
 from torch.utils.data import WeightedRandomSampler, Dataset
 
@@ -33,12 +31,11 @@ def get_dataloader(data_list, batch_size=32, is_train=True):
     else:
         return PyGDataLoader(dataset, batch_size=batch_size, shuffle=False)
 
-def fetch_materials_project_data(api_key, num_samples=100, cutoff=4.0):
+def fetch_materials_project_data(api_key, num_samples=1500, cutoff=4.0):
     """
     Fetches real crystal structures from the Materials Project.
     Requires `mp-api` package: pip install mp-api
     """
-    # pyrefly: ignore [missing-import]
     from mp_api.client import MPRester
     from tqdm import tqdm
     import warnings
@@ -59,7 +56,6 @@ def fetch_materials_project_data(api_key, num_samples=100, cutoff=4.0):
             # Clamp targets to reasonable physical bounds
             data.y[0, 0] = torch.clamp(data.y[0, 0], min=0.0, max=15.0)      # Band Gap
             data.y[0, 1] = torch.clamp(data.y[0, 1], min=-10.0, max=10.0)    # Formation Energy
-            data.y[0, 2] = torch.clamp(data.y[0, 2], min=0.0, max=1000.0)    # Bulk Modulus
         return data_list
         
     print(f"Querying Materials Project for up to {num_samples} materials...")
@@ -91,7 +87,7 @@ def fetch_materials_project_data(api_key, num_samples=100, cutoff=4.0):
         band_gap = doc.band_gap or 0.0
         form_energy = doc.formation_energy_per_atom or 0.0
         
-        # Bulk modulus extraction
+        # Bulk modulus extraction (kept for potential future use)
         bulk_mod_val = getattr(doc, "bulk_modulus", None)
         if isinstance(bulk_mod_val, dict):
             bulk_mod = float(bulk_mod_val.get('vrh', 0.0))
@@ -105,11 +101,10 @@ def fetch_materials_project_data(api_key, num_samples=100, cutoff=4.0):
         else:
             bulk_mod = 0.0
             
-        y = torch.tensor([[band_gap, form_energy, bulk_mod]], dtype=torch.float)
+        y = torch.tensor([[band_gap, form_energy]], dtype=torch.float)
         y = torch.nan_to_num(y, nan=0.0)
         y[0, 0] = torch.clamp(y[0, 0], min=0.0, max=15.0)
         y[0, 1] = torch.clamp(y[0, 1], min=-10.0, max=10.0)
-        y[0, 2] = torch.clamp(y[0, 2], min=0.0, max=1000.0)
         
         # Nodes
         node_features = []
@@ -165,26 +160,4 @@ def fetch_materials_project_data(api_key, num_samples=100, cutoff=4.0):
     print(f"Saving {len(data_list)} processed graphs to {cache_path}...")
     torch.save(data_list, cache_path)
     
-    return data_list
-
-def generate_dummy_data(num_samples=100):
-    """Generates synthetic Materials Project-like data for testing the pipeline."""
-    data_list = []
-    for _ in range(num_samples):
-        num_nodes = np.random.randint(5, 20)
-        num_edges = np.random.randint(10, 40)
-        
-        x = torch.randn(num_nodes, 10) 
-        edge_index = torch.randint(0, num_nodes, (2, num_edges)) 
-        edge_attr = torch.randn(num_edges, 3)
-        
-        is_metal = np.random.rand() > 0.5
-        band_gap = 0.0 if is_metal else np.random.uniform(0.1, 5.0)
-        form_energy = np.random.uniform(-5.0, 1.0)
-        bulk_mod = np.random.uniform(20.0, 300.0)
-        
-        y = torch.tensor([[band_gap, form_energy, bulk_mod]], dtype=torch.float)
-        
-        data = Data(x=x, edge_index=edge_index, edge_attr=edge_attr, y=y)
-        data_list.append(data)
     return data_list

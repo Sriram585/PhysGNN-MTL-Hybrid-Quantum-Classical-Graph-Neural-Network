@@ -1,7 +1,7 @@
 import torch
 
 class TargetScaler:
-    """Standardizes target properties to have mean=0 and std=1 to fix MTL scale imbalance."""
+    """Standardizes target properties to have mean=0 and std=1."""
     def __init__(self):
         self.mean = None
         self.std = None
@@ -19,9 +19,11 @@ class TargetScaler:
     def transform(self, y):
         if self.mean is None or self.std is None:
             return y
-        return (y - self.mean.to(y.device)) / self.std.to(y.device)
+        dim = y.shape[1]
+        return (y - self.mean[:, :dim].to(y.device)) / self.std[:, :dim].to(y.device)
         
     def inverse_transform(self, y_scaled):
         if self.mean is None or self.std is None:
             return y_scaled
-        return (y_scaled * self.std.to(y_scaled.device)) + self.mean.to(y_scaled.device)
+        dim = y_scaled.shape[1]
+        return (y_scaled * self.std[:, :dim].to(y_scaled.device)) + self.mean[:, :dim].to(y_scaled.device)

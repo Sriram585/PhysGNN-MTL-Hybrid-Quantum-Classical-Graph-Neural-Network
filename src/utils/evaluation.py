@@ -13,21 +13,22 @@ def evaluate_and_plot(model, dataloader, output_dir='outputs'):
     
     with torch.no_grad():
         for batch in dataloader:
+            batch = batch.to(model.device) 
             preds = model(batch)
             if hasattr(model, 'scaler') and model.scaler is not None:
                 preds = model.scaler.inverse_transform(preds)
             all_preds.append(preds.cpu().numpy())
-            all_trues.append(batch.y.cpu().numpy())
+            all_trues.append(batch.y[:, :2].cpu().numpy())
             
     all_preds = np.concatenate(all_preds, axis=0)
     all_trues = np.concatenate(all_trues, axis=0)
     
-    properties = ['Band Gap', 'Formation Energy', 'Bulk Modulus']
+    properties = ['Band Gap', 'Formation Energy']
     
     # --- Parity Plots ---
-    fig, axes = plt.subplots(1, 3, figsize=(18, 5))
+    fig, axes = plt.subplots(1, 2, figsize=(12, 5))
     
-    for i in range(3):
+    for i in range(2):
         true_vals = all_trues[:, i]
         pred_vals = all_preds[:, i]
         
@@ -45,7 +46,7 @@ def evaluate_and_plot(model, dataloader, output_dir='outputs'):
         ax.set_xlabel('True Values')
         ax.set_ylabel('Predicted Values')
         
-        textstr = f'MAE = {mae:.4f}\\n$R^2$ = {r2:.4f}'
+        textstr = f'MAE = {mae:.4f}  $R^2$ = {r2:.4f}'
         props = dict(boxstyle='round', facecolor='white', alpha=0.8, edgecolor='gray')
         ax.text(0.05, 0.95, textstr, transform=ax.transAxes, fontsize=12,
                 verticalalignment='top', bbox=props)
@@ -53,7 +54,7 @@ def evaluate_and_plot(model, dataloader, output_dir='outputs'):
                 
     plt.tight_layout()
     plt.savefig(os.path.join(output_dir, 'parity_plots.png'), dpi=300)
-    plt.close()
+    plt.show()
     
     # --- Training Curves ---
     if len(model.train_epoch_losses) > 0 and len(model.val_epoch_losses) > 0:
@@ -67,6 +68,6 @@ def evaluate_and_plot(model, dataloader, output_dir='outputs'):
         plt.legend()
         plt.grid(True)
         plt.savefig(os.path.join(output_dir, 'training_curves.png'), dpi=300)
-        plt.close()
+        plt.show()
     
     print(f"Evaluation complete. Plots saved to '{output_dir}/' directory.")
